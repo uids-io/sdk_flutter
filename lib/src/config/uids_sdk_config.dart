@@ -65,18 +65,6 @@ final class UidsSdkConfig {
   ///   system browser.  This is the same behavior as previous SDK versions —
   ///   no migration needed.
   ///
-  /// - [InAppWebViewLauncher]: shows a modal in-app WebView dialog.  Requires
-  ///   a `contextProvider` that returns a live [BuildContext]:
-  ///
-  /// ```dart
-  /// UidsSdkConfig(
-  ///   browserLauncher: InAppWebViewLauncher(
-  ///     contextProvider: () => navigatorKey.currentContext!,
-  ///   ),
-  ///   ...
-  /// )
-  /// ```
-  ///
   /// - Any custom [AuthBrowserLauncher] implementation for advanced use cases.
   final AuthBrowserLauncher? browserLauncher;
 }

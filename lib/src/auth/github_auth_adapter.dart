@@ -25,8 +25,6 @@ import 'provider_auth_adapter.dart';
 ///   - Mobile: uses a custom-scheme deep link — register the redirect URI
 ///     scheme in your `AndroidManifest.xml` / `Info.plist` and forward every
 ///     incoming URI to [GitHubAuthAdapter.handleDeepLinkCallback].
-/// - [InAppWebViewLauncher]: shows an in-app WebView dialog on all platforms,
-///   removing the need for deep-link URI scheme registration on mobile.
 ///
 /// ## Refresh
 /// GitHub OAuth App tokens do not expire by default.  When a refresh token is
@@ -61,9 +59,7 @@ final class GitHubAuthAdapter implements ProviderAuthAdapter {
   /// Forward deep-link URIs from your app's link handler on mobile.
   ///
   /// This is a convenience delegate for [ExternalBrowserLauncher.handleDeepLinkCallback].
-  /// Only needed when using the default [ExternalBrowserLauncher] on mobile;
-  /// [InAppWebViewLauncher] intercepts the redirect inside the WebView and
-  /// does not require deep-link handling.
+  /// Needed when using [ExternalBrowserLauncher] on mobile.
   ///
   /// ```dart
   /// // e.g. with package:app_links
@@ -250,7 +246,9 @@ final class GitHubAuthAdapter implements ProviderAuthAdapter {
     final error = data['error'] as String?;
     if (error != null) {
       final desc = data['error_description'] as String? ?? '';
-      if (error == 'access_denied') throw const UidsProviderCancelledException();
+      if (error == 'access_denied') {
+        throw const UidsProviderCancelledException();
+      }
       throw UidsProviderSignInException('GitHub OAuth error: $error — $desc');
     }
 
@@ -268,8 +266,9 @@ final class GitHubAuthAdapter implements ProviderAuthAdapter {
     }
 
     final scopeStr = (data['scope'] as String? ?? '').trim();
-    final grantedScopes =
-        scopeStr.isEmpty ? requestedScopes : scopeStr.split(RegExp(r'[, ]+'));
+    final grantedScopes = scopeStr.isEmpty
+        ? requestedScopes
+        : scopeStr.split(RegExp(r'[, ]+'));
 
     return ProviderAuthResult(
       provider: AuthProvider.github,
@@ -285,7 +284,9 @@ final class GitHubAuthAdapter implements ProviderAuthAdapter {
     final error = uri.queryParameters['error'];
     if (error != null) {
       final desc = uri.queryParameters['error_description'] ?? '';
-      if (error == 'access_denied') throw const UidsProviderCancelledException();
+      if (error == 'access_denied') {
+        throw const UidsProviderCancelledException();
+      }
       throw UidsProviderSignInException('GitHub OAuth error: $error — $desc');
     }
     if (!uri.queryParameters.containsKey('code')) {

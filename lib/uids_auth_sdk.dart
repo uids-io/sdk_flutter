@@ -8,7 +8,6 @@ library uids_auth_sdk;
 // Browser launcher
 export 'src/browser/auth_browser_launcher.dart';
 export 'src/browser/external_browser_launcher.dart';
-export 'src/browser/in_app_web_view_launcher.dart';
 
 // Config
 export 'src/config/github_auth_config.dart';

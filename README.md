@@ -94,57 +94,6 @@ Register each provider's redirect URI scheme in `AndroidManifest.xml` / `Info.pl
 
 ---
 
-### Option 2 — In-app WebView (`InAppWebViewLauncher`)
-
-Shows a modal dialog with an embedded WebView instead of opening the system browser. The WebView intercepts the redirect URI before the OS ever sees it, so **no deep-link URI scheme registration is needed** on Android or iOS.
-
-#### 1. Add the dependency
-
-```yaml
-dependencies:
-  flutter_inappwebview: ^6.1.5
-```
-
-Follow the [flutter_inappwebview setup guide](https://inappwebview.dev/docs/intro) for platform-specific requirements (internet permission on Android, `NSAppTransportSecurity` on iOS, etc.).
-
-#### 2. Create a navigator key
-
-```dart
-final navigatorKey = GlobalKey<NavigatorState>();
-
-MaterialApp(
-  navigatorKey: navigatorKey,
-  ...
-)
-```
-
-#### 3. Pass `InAppWebViewLauncher` to the SDK
-
-```dart
-await sdk.initialize(
-  UidsSdkConfig(
-    browserLauncher: InAppWebViewLauncher(
-      contextProvider: () => navigatorKey.currentContext!,
-    ),
-    ...
-  ),
-);
-```
-
-The `contextProvider` callback is invoked each time a sign-in is triggered, so it always returns a live `BuildContext`.
-
-#### Optional: customise the dialog size
-
-```dart
-InAppWebViewLauncher(
-  contextProvider: () => navigatorKey.currentContext!,
-  dialogWidth:  700,   // logical pixels, default 600
-  dialogHeight: 600,   // logical pixels, default 520
-)
-```
-
----
-
 ### Custom launcher
 
 Implement `AuthBrowserLauncher` for any other browser surface:
@@ -309,8 +258,7 @@ await sdk.unregisterDevice();
 ```
 UidsAuthSdk (public facade)
  ├── AuthManager          → ProviderAuthAdapter → AuthBrowserLauncher
- │                                                ├── ExternalBrowserLauncher (default)
- │                                                └── InAppWebViewLauncher
+ │                                                └── ExternalBrowserLauncher (default)
  ├── SessionManager       → AuthApiClient, SecureSdkStorage
  └── DeviceManager        → AuthApiClient, SecureSdkStorage
 ```

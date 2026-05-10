@@ -23,8 +23,6 @@ import 'provider_auth_adapter.dart';
 ///   - Mobile: uses a custom-scheme deep link — register the redirect URI
 ///     scheme in your `AndroidManifest.xml` / `Info.plist` and forward every
 ///     incoming URI to [MicrosoftAuthAdapter.handleDeepLinkCallback].
-/// - [InAppWebViewLauncher]: shows an in-app WebView dialog on all platforms,
-///   removing the need for deep-link URI scheme registration on mobile.
 ///
 /// ## Refresh
 /// After a successful [signIn] the Microsoft refresh token is stored in-memory
@@ -56,9 +54,7 @@ final class MicrosoftAuthAdapter implements ProviderAuthAdapter {
   /// Forward deep-link URIs from your app's link handler on mobile.
   ///
   /// This is a convenience delegate for [ExternalBrowserLauncher.handleDeepLinkCallback].
-  /// Only needed when using the default [ExternalBrowserLauncher] on mobile;
-  /// [InAppWebViewLauncher] intercepts the redirect inside the WebView and
-  /// does not require deep-link handling.
+  /// Needed when using [ExternalBrowserLauncher] on mobile.
   ///
   /// ```dart
   /// // e.g. with package:app_links
@@ -72,8 +68,10 @@ final class MicrosoftAuthAdapter implements ProviderAuthAdapter {
   /// Held in memory only — never persisted.
   String? _refreshToken;
 
-  bool get _isMobile => !kIsWeb && (defaultTargetPlatform == TargetPlatform.android ||
-      defaultTargetPlatform == TargetPlatform.iOS);
+  bool get _isMobile =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   // ── ProviderAuthAdapter ───────────────────────────────────────────────────
 
@@ -87,8 +85,8 @@ final class MicrosoftAuthAdapter implements ProviderAuthAdapter {
     final redirectUri = _resolveRedirectUri();
     final tenant = _config.tenantId;
 
-    final authUrl =
-        Uri.parse(_authorizeBase.replaceFirst('{tenant}', tenant)).replace(
+    final authUrl = Uri.parse(_authorizeBase.replaceFirst('{tenant}', tenant))
+        .replace(
           queryParameters: <String, String>{
             'client_id': _config.clientId,
             'response_type': 'code',
@@ -217,8 +215,9 @@ final class MicrosoftAuthAdapter implements ProviderAuthAdapter {
     final idToken = data['id_token'] as String?;
     final newRefreshToken = data['refresh_token'] as String?;
     final grantedScopeStr = (data['scope'] as String? ?? '').trim();
-    final grantedScopes =
-        grantedScopeStr.isEmpty ? requestedScopes : grantedScopeStr.split(' ');
+    final grantedScopes = grantedScopeStr.isEmpty
+        ? requestedScopes
+        : grantedScopeStr.split(' ');
 
     if (accessToken == null || accessToken.isEmpty) {
       throw const UidsProviderSignInException(
@@ -244,8 +243,11 @@ final class MicrosoftAuthAdapter implements ProviderAuthAdapter {
     final error = uri.queryParameters['error'];
     if (error != null) {
       final desc = uri.queryParameters['error_description'] ?? '';
-      if (error == 'access_denied') throw const UidsProviderCancelledException();
-      throw UidsProviderSignInException('Microsoft OAuth error: $error — $desc');
+      if (error == 'access_denied')
+        throw const UidsProviderCancelledException();
+      throw UidsProviderSignInException(
+        'Microsoft OAuth error: $error — $desc',
+      );
     }
     if (!uri.queryParameters.containsKey('code')) {
       throw const UidsProviderSignInException(

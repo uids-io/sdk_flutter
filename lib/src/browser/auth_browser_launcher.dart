@@ -14,20 +14,11 @@
 ///
 /// Two built-in implementations are provided:
 /// - [ExternalBrowserLauncher]: opens the system browser (the default).
-/// - [InAppWebViewLauncher]: shows an in-app WebView dialog.
 ///
 /// Usage in [UidsSdkConfig]:
 /// ```dart
 /// // Default: external system browser (no change needed)
 /// UidsSdkConfig(...)
-///
-/// // In-app WebView
-/// UidsSdkConfig(
-///   browserLauncher: InAppWebViewLauncher(
-///     contextProvider: () => navigatorKey.currentContext!,
-///   ),
-///   ...
-/// )
 /// ```
 abstract interface class AuthBrowserLauncher {
   /// Opens [authUrl] and waits for the OAuth redirect to [redirectUri].
