@@ -35,6 +35,70 @@ void main() {
     expect(session.authorizationHeader, 'Bearer jwt');
   });
 
+  test('auth session parses email /aud token payload', () {
+    final session = AuthSession.fromJson({
+      'token': 'scoped-jwt',
+      'refreshToken': 'db-refresh-hex',
+      'username': 'user@example.com',
+      'idpName': 'Email',
+    });
+
+    expect(session.accessToken, 'scoped-jwt');
+    expect(session.refreshToken, 'db-refresh-hex');
+    expect(session.provider, AuthProvider.email);
+    expect(session.isRefreshTokenExpired, isFalse);
+  });
+
+  test('email otp result parses tenant entities', () {
+    final result = EmailOtpResult.fromJson({
+      'username': 'user@example.com',
+      'idpName': 'Email',
+      'entities': [
+        {
+          'tenant': 'owner@example.com',
+          'refresh_token': 'abc123',
+          'authorizations': {'roles': ['all']},
+        },
+      ],
+    });
+
+    expect(result.username, 'user@example.com');
+    expect(result.entities, hasLength(1));
+    expect(result.entities.first.tenant, 'owner@example.com');
+    expect(result.entities.first.refreshToken, 'abc123');
+    expect(result.entities.first.roles, ['all']);
+  });
+
+  test('email registration result parses backend payload', () {
+    final result = EmailRegistrationResult.fromJson(
+      {
+        'accessToken': 'pending-jwt',
+        'qrCodeDataURL': 'data:image/png;base64,abc',
+        'message': 'User registered successfully',
+        'username': 'newuser',
+        'email': 'new@example.com',
+      },
+      email: 'new@example.com',
+      username: 'newuser',
+    );
+
+    expect(result.pendingAccessToken, 'pending-jwt');
+    expect(result.qrCodeDataUrl, startsWith('data:image/png'));
+    expect(result.email, 'new@example.com');
+    expect(result.username, 'newuser');
+  });
+
+  test('username availability parses backend payload', () {
+    final result = UsernameAvailabilityResult.fromJson({
+      'username': 'newuser',
+      'available': true,
+      'isSuccess': true,
+    });
+
+    expect(result.username, 'newuser');
+    expect(result.available, isTrue);
+  });
+
   test('registered device parses backend payload', () {
     final device = RegisteredDevice.fromJson({
       'id': 'device-1',

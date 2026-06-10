@@ -11,6 +11,7 @@ final class GoogleAuthConfig {
     this.desktopClientSecret,
     this.desktopRedirectUri,
     this.useInstalledAppFlowOnDesktop = false,
+    this.useWebFlow = false,
   });
 
   /// OAuth 2.0 Web Client ID — used when the backend expects a web credential
@@ -48,4 +49,22 @@ final class GoogleAuthConfig {
   /// When `true` and [desktopClientId] is provided, use the installed-app
   /// (out-of-band / loopback) flow instead of a browser redirect.
   final bool useInstalledAppFlowOnDesktop;
+
+  /// When `true`, forces the PKCE browser-based OAuth flow on every native
+  /// platform (Android, iOS, Windows, macOS, Linux) instead of the default
+  /// native sign-in plugin on mobile.
+  ///
+  /// **Desktop** — [desktopRedirectUri] must be a loopback URL
+  /// (e.g. `http://localhost:8585/callback`).
+  ///
+  /// **Mobile (Android / iOS)** — [desktopRedirectUri] must be a URI your app
+  /// can capture, typically a custom-scheme deep-link such as
+  /// `myapp://oauth2redirect`.  Register the scheme in `AndroidManifest.xml` /
+  /// `Info.plist` and forward every incoming URI from your link handler:
+  /// ```dart
+  /// _appLinks.uriLinkStream.listen(GoogleAuthAdapter.handleDeepLinkCallback);
+  /// ```
+  ///
+  /// Defaults to `false` — each platform uses its native adapter.
+  final bool useWebFlow;
 }

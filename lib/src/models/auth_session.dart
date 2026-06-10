@@ -18,8 +18,15 @@ final class AuthSession {
   /// Access-token expiry derived directly from JWT `exp`.
   DateTime get accessTokenExpiresAt => readJwtExpiry(accessToken);
 
-  /// Refresh-token expiry derived directly from JWT `exp`.
-  DateTime get refreshTokenExpiresAt => readJwtExpiry(refreshToken);
+  /// Refresh-token expiry derived from JWT `exp`, or a far-future date for
+  /// opaque DB refresh tokens used by email/password auth.
+  DateTime get refreshTokenExpiresAt {
+    try {
+      return readJwtExpiry(refreshToken);
+    } on FormatException {
+      return DateTime.utc(2099);
+    }
+  }
 
   final AuthUser user;
   final AuthProvider provider;
@@ -39,14 +46,23 @@ final class AuthSession {
   String get authorizationHeader => '$tokenType $accessToken';
 
   factory AuthSession.fromJson(Map<String, dynamic> json) {
+    final accessToken =
+        json['accessToken'] as String? ?? json['token'] as String?;
+    final refreshToken = json['refreshToken'] as String?;
+    final username =
+        json['username'] as String? ?? json['sub'] as String? ?? '';
+
+    if (accessToken == null || refreshToken == null) {
+      throw FormatException(
+        'Session response is missing accessToken/token or refreshToken',
+      );
+    }
+
     return AuthSession(
-      accessToken: json['accessToken'] as String,
-      refreshToken: json['refreshToken'] as String,
-      user: AuthUser.temp(json['username'] as String),
-
-      /// Supports both backend `idpName` and local `provider`.
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      user: AuthUser.temp(username),
       provider: _readProvider(json['idpName'] ?? json['provider']),
-
       tokenType: json['tokenType'] as String? ?? 'Bearer',
     );
   }
@@ -62,6 +78,12 @@ final class AuthSession {
       case 'microsoft':
       case 'outlook':
         return AuthProvider.microsoft;
+
+      case 'github':
+        return AuthProvider.github;
+
+      case 'email':
+        return AuthProvider.email;
 
       default:
         throw FormatException('Unknown provider: $value');

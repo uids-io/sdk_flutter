@@ -13,8 +13,10 @@ import '../../models/auth_provider.dart';
 import '../../models/provider_auth_result.dart';
 import 'google_auth_platform_adapter.dart';
 
-/// Google sign-in for Windows / macOS / Linux using the OAuth 2.0
-/// Authorization Code flow with PKCE.
+/// Google sign-in via the OAuth 2.0 Authorization Code flow with PKCE.
+///
+/// Used on Windows / macOS / Linux by default, and on Android / iOS when
+/// [GoogleAuthConfig.useWebFlow] is `true`.
 ///
 /// Flow:
 /// 1. Generate `code_verifier`, `code_challenge` (S256), `state`.
@@ -24,6 +26,14 @@ import 'google_auth_platform_adapter.dart';
 /// 5. POST to Google's token endpoint with `code` + `code_verifier`.
 /// 6. Return [ProviderAuthResult] (id_token + access_token).
 ///
+/// **Mobile deep-link wiring** — when this adapter runs on Android / iOS,
+/// [ExternalBrowserLauncher] waits for a deep-link URI via
+/// [ExternalBrowserLauncher.handleDeepLinkCallback].  Forward the URI from
+/// your app's link handler:
+/// ```dart
+/// _appLinks.uriLinkStream.listen(GoogleAuthAdapter.handleDeepLinkCallback);
+/// ```
+///
 /// No tokens are persisted; the refresh token (when granted) is held in memory
 /// for the lifetime of the adapter so that [refresh] can run without UI.
 final class GoogleDesktopAuthAdapter implements GoogleAuthPlatformAdapter {
@@ -31,9 +41,11 @@ final class GoogleDesktopAuthAdapter implements GoogleAuthPlatformAdapter {
     required GoogleAuthConfig config,
     http.Client? httpClient,
     AuthBrowserLauncher? browserLauncher,
+    bool requireLoopbackRedirect = true,
   }) : _config = config,
        _http = httpClient ?? http.Client(),
-       _launcher = browserLauncher ?? const ExternalBrowserLauncher();
+       _launcher = browserLauncher ?? const ExternalBrowserLauncher(),
+       _requireLoopbackRedirect = requireLoopbackRedirect;
 
   static const _authorizeEndpoint =
       'https://accounts.google.com/o/oauth2/v2/auth';
@@ -45,6 +57,7 @@ final class GoogleDesktopAuthAdapter implements GoogleAuthPlatformAdapter {
   final GoogleAuthConfig _config;
   final http.Client _http;
   final AuthBrowserLauncher _launcher;
+  final bool _requireLoopbackRedirect;
 
   /// Held in memory only — never persisted.  Set after a successful sign-in
   /// so that [refresh] can run without UI.
@@ -268,14 +281,16 @@ final class GoogleDesktopAuthAdapter implements GoogleAuthPlatformAdapter {
     final raw = _config.desktopRedirectUri;
     if (raw == null || raw.isEmpty) {
       throw const UidsProviderSignInException(
-        'Google desktop sign-in requires desktopRedirectUri in '
-        'GoogleAuthConfig (e.g. http://localhost:8585/callback).',
+        'Google sign-in requires desktopRedirectUri in GoogleAuthConfig. '
+        'Use a loopback URL on desktop (e.g. http://localhost:8585/callback) '
+        'or an app-scheme URI on mobile (e.g. myapp://oauth2redirect).',
       );
     }
     final uri = Uri.parse(raw);
-    if (!(uri.host == 'localhost' || uri.host == '127.0.0.1') ||
-        uri.scheme != 'http' ||
-        uri.port == 0) {
+    if (_requireLoopbackRedirect &&
+        (!(uri.host == 'localhost' || uri.host == '127.0.0.1') ||
+            uri.scheme != 'http' ||
+            uri.port == 0)) {
       throw const UidsProviderSignInException(
         'desktopRedirectUri must be a loopback URL with an explicit port '
         '(e.g. http://localhost:8585/callback).',

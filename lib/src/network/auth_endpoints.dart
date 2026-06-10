@@ -21,6 +21,22 @@ final class AuthEndpoints {
   Uri get refreshToken =>
       authBaseUrl.replace(path: '${authBaseUrl.path}/refresh');
 
+  // ── Email / password endpoints ────────────────────────────────────────────
+
+  Uri checkUsername(String username) => authBaseUrl.replace(
+    path: '${authBaseUrl.path}/checkUsername',
+    queryParameters: {'username': username},
+  );
+
+  Uri get register => authBaseUrl.replace(path: '${authBaseUrl.path}/register');
+
+  Uri get login => authBaseUrl.replace(path: '${authBaseUrl.path}/login');
+
+  Uri get otpVerify =>
+      authBaseUrl.replace(path: '${authBaseUrl.path}/otpVerify');
+
+  Uri get aud => authBaseUrl.replace(path: '${authBaseUrl.path}/aud');
+
   // ── Device endpoints ──────────────────────────────────────────────────────
 
   /// Register a new device.

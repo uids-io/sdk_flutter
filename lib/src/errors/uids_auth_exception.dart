@@ -57,3 +57,41 @@ final class UidsNotInitializedException extends UidsAuthException {
 final class UidsProviderNotConfiguredException extends UidsAuthException {
   const UidsProviderNotConfiguredException(super.message);
 }
+
+/// Thrown when email/password credentials are rejected by the backend.
+final class UidsInvalidCredentialsException extends UidsAuthException {
+  const UidsInvalidCredentialsException(super.message);
+}
+
+/// Thrown when a username is already taken during registration.
+final class UidsUsernameUnavailableException extends UidsAuthException {
+  const UidsUsernameUnavailableException(super.message);
+}
+
+/// Thrown when a TOTP code is invalid or expired.
+final class UidsInvalidOtpException extends UidsAuthException {
+  const UidsInvalidOtpException(super.message);
+}
+
+/// Thrown when the account has no accessible tenants.
+final class UidsNoTenantsAvailableException extends UidsAuthException {
+  const UidsNoTenantsAvailableException([
+    super.message = 'No tenants available for this account.',
+  ]);
+}
+
+/// Thrown when the requested tenant is not in the user's entity list.
+final class UidsTenantNotFoundException extends UidsAuthException {
+  const UidsTenantNotFoundException(super.message);
+}
+
+/// Thrown when the user has multiple tenants and none was specified.
+final class UidsTenantSelectionRequiredException extends UidsAuthException {
+  const UidsTenantSelectionRequiredException(
+    this.tenants, [
+    super.message =
+        'Multiple tenants available. Pass tenant to completeEmailSignIn.',
+  ]);
+
+  final List<String> tenants;
+}

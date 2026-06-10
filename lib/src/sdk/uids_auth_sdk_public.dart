@@ -2,13 +2,16 @@ import '../config/uids_sdk_config.dart';
 import '../models/auth_provider.dart';
 import '../models/auth_session.dart';
 import '../models/device_models.dart';
+import '../models/email_auth_models.dart';
+import '../storage/sdk_storage.dart';
 import 'uids_auth_sdk_impl.dart';
 
 /// Public facade for the UIDS Auth SDK.
 ///
 /// The API is split into two independent flows:
 ///
-/// - **Authentication** — provider sign-in, session lifecycle, refresh.
+/// - **Authentication** — OAuth provider sign-in, email/password sign-in,
+///   session lifecycle, refresh.
 /// - **Device registration** — register / update / unregister a device.
 ///
 /// The two flows share an access token but are otherwise independently
@@ -19,8 +22,13 @@ import 'uids_auth_sdk_impl.dart';
 /// Obtain an instance via [UidsAuthSdk.create] and call [initialize] before
 /// using any other method.
 abstract interface class UidsAuthSdk {
-  /// Creates a new SDK instance backed by platform secure storage.
-  factory UidsAuthSdk.create() => UidsAuthSdkImpl();
+  /// Creates a new SDK instance.
+  ///
+  /// Pass a custom [storage] implementation to replace the default
+  /// [SecureSdkStorage].  Omit it (or pass `null`) to keep the default
+  /// platform-secure storage behaviour.
+  factory UidsAuthSdk.create({SdkStorage? storage}) =>
+      UidsAuthSdkImpl(storage: storage);
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -48,6 +56,46 @@ abstract interface class UidsAuthSdk {
   /// [unregisterDevice] or [clearAll] separately if you also want to detach
   /// the device.
   Future<void> signOut();
+
+  // ── Email / password ──────────────────────────────────────────────────────
+
+  /// Checks whether [username] is available for email registration.
+  Future<UsernameAvailabilityResult> checkUsernameAvailable(String username);
+
+  /// Register a new account with username, email, and password.
+  ///
+  /// Returns a [EmailRegistrationResult] with a QR code for authenticator
+  /// setup. Call [completeEmailSignIn] with the pending token and a TOTP
+  /// code to finish registration.
+  Future<EmailRegistrationResult> registerWithEmail({
+    required String username,
+    required String email,
+    required String password,
+  });
+
+  /// Sign in with email, password, and authenticator code in one step.
+  ///
+  /// When the account has multiple tenants, pass [tenant] explicitly or
+  /// catch [UidsTenantSelectionRequiredException] to present a picker.
+  Future<AuthSession> signInWithEmail({
+    required String email,
+    required String password,
+    required String otp,
+    String? tenant,
+  });
+
+  /// Step 1 of a multi-screen email sign-in — validates credentials.
+  Future<EmailLoginResult> loginWithEmail({
+    required String email,
+    required String password,
+  });
+
+  /// Step 2 of a multi-screen email sign-in — verifies TOTP and saves session.
+  Future<AuthSession> completeEmailSignIn({
+    required String otp,
+    required String pendingAccessToken,
+    String? tenant,
+  });
 
   // ── Session ───────────────────────────────────────────────────────────────
 

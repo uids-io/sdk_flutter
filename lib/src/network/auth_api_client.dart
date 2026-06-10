@@ -6,6 +6,7 @@ import '../config/uids_sdk_config.dart';
 import '../errors/uids_auth_exception.dart';
 import '../models/auth_session.dart';
 import '../models/device_models.dart';
+import '../models/email_auth_models.dart';
 import '../models/provider_auth_result.dart';
 import 'auth_endpoints.dart';
 
@@ -71,8 +72,7 @@ final class AuthApiClient {
 
     try {
       final json = await _post(_endpoints.refreshToken, body, authToken: null);
-      json['username'] ??= username;
-      json['idpName'] ??= provider;
+      _normalizeSessionJson(json, username: username, provider: provider);
       return AuthSession.fromJson(json);
     } on UidsNetworkException catch (e) {
       if (e.statusCode == 401 || e.statusCode == 400) {
@@ -80,6 +80,118 @@ final class AuthApiClient {
       }
       rethrow;
     }
+  }
+
+  // ── Email / password ──────────────────────────────────────────────────────
+
+  /// Returns whether [username] is available for email registration.
+  Future<UsernameAvailabilityResult> checkUsernameAvailable(
+    String username,
+  ) async {
+    final trimmed = username.trim();
+    if (trimmed.isEmpty) {
+      throw ArgumentError.value(username, 'username', 'Username cannot be empty.');
+    }
+
+    final json = await _get(
+      _endpoints.checkUsername(trimmed),
+      authToken: null,
+    );
+    return UsernameAvailabilityResult.fromJson(json);
+  }
+
+  /// Register a new account with username, email, and password.
+  Future<EmailRegistrationResult> registerWithEmail({
+    required String username,
+    required String email,
+    required String password,
+  }) async {
+    final body = <String, dynamic>{
+      'username': username.trim(),
+      'email': email.trim(),
+      'password': password,
+    };
+
+    try {
+      final json = await _post(_endpoints.register, body, authToken: null);
+      return EmailRegistrationResult.fromJson(
+        json,
+        email: email.trim(),
+        username: username.trim(),
+      );
+    } on UidsNetworkException catch (e) {
+      if (e.statusCode == 400 &&
+          e.message.toLowerCase().contains('username')) {
+        throw UidsUsernameUnavailableException(e.message);
+      }
+      rethrow;
+    }
+  }
+
+  /// Step 1 of email sign-in — validates credentials and returns a pending token.
+  Future<EmailLoginResult> loginWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    final body = <String, dynamic>{
+      'email': email,
+      'password': password,
+    };
+
+    try {
+      final json = await _post(_endpoints.login, body, authToken: null);
+      return EmailLoginResult.fromJson(json, email: email);
+    } on UidsNetworkException catch (e) {
+      if (e.statusCode == 400) {
+        throw UidsInvalidCredentialsException(e.message);
+      }
+      rethrow;
+    }
+  }
+
+  /// Step 2 — verify the authenticator TOTP code.
+  Future<EmailOtpResult> verifyEmailOtp({
+    required String otp,
+    required String pendingAccessToken,
+  }) async {
+    try {
+      final json = await _post(
+        _endpoints.otpVerify,
+        <String, dynamic>{'otp': otp},
+        authToken: pendingAccessToken,
+      );
+      return EmailOtpResult.fromJson(json);
+    } on UidsNetworkException catch (e) {
+      if (e.statusCode == 400) {
+        throw UidsInvalidOtpException(e.message);
+      }
+      rethrow;
+    }
+  }
+
+  /// Step 3 — exchange tenant credentials for a fully-scoped API session.
+  Future<AuthSession> exchangeAud({
+    required String tenant,
+    required String username,
+    required String refreshToken,
+    String idpName = 'Email',
+    String? deviceId,
+  }) async {
+    final body = <String, dynamic>{
+      'tenant': tenant,
+      'username': username,
+      'refreshToken': refreshToken,
+      'idpName': idpName,
+      if (deviceId != null) 'deviceId': deviceId,
+    };
+
+    final json = await _post(_endpoints.aud, body, authToken: null);
+    _normalizeSessionJson(
+      json,
+      username: username,
+      provider: idpName,
+    );
+    return AuthSession.fromJson(json);
   }
 
   // ── Device ────────────────────────────────────────────────────────────────
@@ -219,13 +331,43 @@ final class AuthApiClient {
       return jsonDecode(response.body) as Map<String, dynamic>;
     }
 
-    final message =
-        'HTTP ${response.statusCode}: ${response.reasonPhrase ?? 'Unknown error'}';
+    final message = _readErrorMessage(response);
 
     if (response.statusCode == 401) {
       throw UidsNetworkException(message, statusCode: response.statusCode);
     }
 
     throw UidsNetworkException(message, statusCode: response.statusCode);
+  }
+
+  String _readErrorMessage(http.Response response) {
+    final fallback =
+        'HTTP ${response.statusCode}: ${response.reasonPhrase ?? 'Unknown error'}';
+
+    if (response.body.isEmpty) return fallback;
+
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map) {
+        final message = body['message'] ?? body['errorDetails'];
+        if (message is String && message.isNotEmpty) return message;
+      }
+    } catch (_) {
+      // Fall back to generic HTTP message.
+    }
+
+    return fallback;
+  }
+
+  void _normalizeSessionJson(
+    Map<String, dynamic> json, {
+    required String username,
+    required String provider,
+  }) {
+    json['username'] ??= username;
+    json['idpName'] ??= provider;
+    if (json['accessToken'] == null && json['token'] != null) {
+      json['accessToken'] = json['token'];
+    }
   }
 }

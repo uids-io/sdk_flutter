@@ -8,6 +8,7 @@ import '../errors/uids_auth_exception.dart';
 import '../models/auth_provider.dart';
 import '../models/auth_session.dart';
 import '../models/device_models.dart';
+import '../models/email_auth_models.dart';
 import '../network/auth_api_client.dart';
 import '../session/session_manager.dart';
 import '../storage/secure_sdk_storage.dart';
@@ -82,6 +83,67 @@ final class UidsAuthSdkImpl implements UidsAuthSdk {
   }) async {
     _assertInitialized();
     return _auth.refreshProvider(provider: provider, scopes: scopes);
+  }
+
+  @override
+  Future<UsernameAvailabilityResult> checkUsernameAvailable(
+    String username,
+  ) async {
+    _assertInitialized();
+    return _auth.checkUsernameAvailable(username);
+  }
+
+  @override
+  Future<EmailRegistrationResult> registerWithEmail({
+    required String username,
+    required String email,
+    required String password,
+  }) async {
+    _assertInitialized();
+    return _auth.registerWithEmail(
+      username: username,
+      email: email,
+      password: password,
+    );
+  }
+
+  @override
+  Future<AuthSession> signInWithEmail({
+    required String email,
+    required String password,
+    required String otp,
+    String? tenant,
+  }) async {
+    _assertInitialized();
+    return _auth.signInWithEmail(
+      email: email,
+      password: password,
+      otp: otp,
+      tenant: tenant,
+    );
+  }
+
+  @override
+  Future<EmailLoginResult> loginWithEmail({
+    required String email,
+    required String password,
+  }) async {
+    _assertInitialized();
+    return _auth.loginWithEmail(email: email, password: password);
+  }
+
+  @override
+  Future<AuthSession> completeEmailSignIn({
+    required String otp,
+    required String pendingAccessToken,
+    String? tenant,
+  }) async {
+    _assertInitialized();
+    return _auth.completeEmailSignIn(
+      otp: otp,
+      pendingAccessToken: pendingAccessToken,
+      tenant: tenant,
+    );
   }
 
   // ── Session ───────────────────────────────────────────────────────────────

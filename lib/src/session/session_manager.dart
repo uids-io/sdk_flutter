@@ -94,7 +94,7 @@ final class SessionManager {
       final refreshed = await _api.refreshToken(
         session.refreshToken,
         username: session.user.email,
-        provider: session.provider.name,
+        provider: session.provider.label,
       );
       await saveSession(refreshed);
       return refreshed;
