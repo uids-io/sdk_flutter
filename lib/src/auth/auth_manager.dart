@@ -1,8 +1,11 @@
 import '../errors/uids_auth_exception.dart';
+import '../utils/password_validation.dart';
+import '../logging/sdk_logger.dart';
 import '../models/auth_provider.dart';
 import '../models/auth_session.dart';
 import '../models/email_auth_models.dart';
 import '../models/provider_auth_result.dart';
+import '../models/provider_sign_in_options.dart';
 import '../network/auth_api_client.dart';
 import '../session/session_manager.dart';
 import 'provider_auth_adapter.dart';
@@ -22,24 +25,43 @@ final class AuthManager {
     required AuthApiClient apiClient,
     required SessionManager sessionManager,
     required Map<AuthProvider, ProviderAuthAdapter> adapters,
+    SdkLogger? logger,
   }) : _api = apiClient,
        _session = sessionManager,
-       _adapters = adapters;
+       _adapters = adapters,
+       _log = logger ?? SdkLogger(onLog: null);
 
   final AuthApiClient _api;
   final SessionManager _session;
   final Map<AuthProvider, ProviderAuthAdapter> _adapters;
+  final SdkLogger _log;
 
   /// Sign in with the given [provider] and exchange for a backend session.
   Future<AuthSession> signIn({
     required AuthProvider provider,
     List<String> scopes = const ['openid', 'email', 'profile'],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
   }) async {
-    final adapter = _requireAdapter(provider);
-    final providerResult = await adapter.signIn(scopes: scopes);
-    final session = await _api.exchangeProviderToken(providerResult);
-    await _session.saveSession(session);
-    return session;
+    _log.info('Provider sign-in started', {'provider': provider.label});
+    try {
+      final adapter = _requireAdapter(provider);
+      final providerResult = await adapter.signIn(scopes: scopes, options: options);
+      final session = await _api.exchangeProviderToken(providerResult);
+      await _session.saveSession(session);
+      _log.info('Provider sign-in succeeded', {
+        'provider': provider.label,
+        'user': session.user.email,
+      });
+      return session;
+    } catch (e, st) {
+      _log.warn(
+        'Provider sign-in failed',
+        error: e,
+        stackTrace: st,
+        data: {'provider': provider.label},
+      );
+      rethrow;
+    }
   }
 
   /// Silently refreshes the provider credential and re-exchanges it for a
@@ -54,13 +76,28 @@ final class AuthManager {
     required AuthProvider provider,
     List<String> scopes = const ['openid', 'email', 'profile'],
   }) async {
-    final adapter = _requireAdapter(provider);
-    final ProviderAuthResult providerResult = await adapter.refresh(
-      scopes: scopes,
-    );
-    final session = await _api.exchangeProviderToken(providerResult);
-    await _session.saveSession(session);
-    return session;
+    _log.info('Provider silent refresh started', {'provider': provider.label});
+    try {
+      final adapter = _requireAdapter(provider);
+      final ProviderAuthResult providerResult = await adapter.refresh(
+        scopes: scopes,
+      );
+      final session = await _api.exchangeProviderToken(providerResult);
+      await _session.saveSession(session);
+      _log.info('Provider silent refresh succeeded', {
+        'provider': provider.label,
+        'user': session.user.email,
+      });
+      return session;
+    } catch (e, st) {
+      _log.warn(
+        'Provider silent refresh failed',
+        error: e,
+        stackTrace: st,
+        data: {'provider': provider.label},
+      );
+      rethrow;
+    }
   }
 
   // ── Email / password ──────────────────────────────────────────────────────
@@ -70,16 +107,28 @@ final class AuthManager {
     return _api.checkUsernameAvailable(username);
   }
 
+  /// Sends a one-time verification code to [email] before registration.
+  Future<void> sendRegisterEmailOtp({required String email}) {
+    return _api.sendRegisterEmailOtp(email: email);
+  }
+
   /// Register a new account. Returns a QR code for authenticator setup.
   Future<EmailRegistrationResult> registerWithEmail({
     required String username,
     required String email,
     required String password,
+    required String emailOtp,
   }) {
+    final passwordError = validateRegistrationPassword(password);
+    if (passwordError != null) {
+      throw UidsWeakPasswordException(passwordError);
+    }
+
     return _api.registerWithEmail(
       username: username,
       email: email,
       password: password,
+      emailOtp: emailOtp,
     );
   }
 
@@ -101,19 +150,29 @@ final class AuthManager {
     required String pendingAccessToken,
     String? tenant,
   }) async {
-    final otpResult = await _api.verifyEmailOtp(
-      otp: otp,
-      pendingAccessToken: pendingAccessToken,
-    );
-    final entity = _selectTenantEntity(otpResult.entities, tenant);
-    final session = await _api.exchangeAud(
-      tenant: entity.tenant,
-      username: otpResult.username,
-      refreshToken: entity.refreshToken,
-      idpName: otpResult.idpName,
-    );
-    await _session.saveSession(session);
-    return session;
+    _log.info('Email sign-in completing', {'tenant': tenant ?? '(auto)'});
+    try {
+      final otpResult = await _api.verifyEmailOtp(
+        otp: otp,
+        pendingAccessToken: pendingAccessToken,
+      );
+      final entity = _selectTenantEntity(otpResult.entities, tenant);
+      final session = await _api.exchangeAud(
+        tenant: entity.tenant,
+        username: otpResult.username,
+        refreshToken: entity.refreshToken,
+        idpName: otpResult.idpName,
+      );
+      await _session.saveSession(session);
+      _log.info('Email sign-in succeeded', {
+        'user': session.user.email,
+        'tenant': entity.tenant,
+      });
+      return session;
+    } catch (e, st) {
+      _log.warn('Email sign-in failed', error: e, stackTrace: st);
+      rethrow;
+    }
   }
 
   /// Convenience: login + 2FA + tenant exchange in one call.
@@ -136,14 +195,23 @@ final class AuthManager {
   /// Does **not** touch device state — that is owned by `DeviceManager` and
   /// must be cleared separately if desired.
   Future<void> signOut(AuthProvider? provider) async {
-    if (provider != null) {
-      await _adapters[provider]?.signOut();
-    } else {
-      for (final adapter in _adapters.values) {
-        await adapter.signOut();
+    _log.info('Sign-out started', {
+      'provider': provider?.label ?? 'all',
+    });
+    try {
+      if (provider != null) {
+        await _adapters[provider]?.signOut();
+      } else {
+        for (final adapter in _adapters.values) {
+          await adapter.signOut();
+        }
       }
+      await _session.clearSession();
+      _log.info('Sign-out completed');
+    } catch (e, st) {
+      _log.warn('Sign-out failed', error: e, stackTrace: st);
+      rethrow;
     }
-    await _session.clearSession();
   }
 
   // ── Internals ─────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import '../../config/google_auth_config.dart';
 import '../../errors/uids_auth_exception.dart';
 import '../../models/auth_provider.dart';
 import '../../models/provider_auth_result.dart';
+import '../../models/provider_sign_in_options.dart';
 import 'google_auth_platform_adapter.dart';
 
 /// Google sign-in for Flutter Web using `google_sign_in_web`.
@@ -32,9 +33,21 @@ final class GoogleWebAuthAdapter implements GoogleAuthPlatformAdapter {
   // ── GoogleAuthPlatformAdapter ─────────────────────────────────────────────
 
   @override
-  Future<ProviderAuthResult> signIn({List<String> scopes = const []}) async {
+  Future<ProviderAuthResult> signIn({
+    List<String> scopes = const [],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
+  }) async {
     try {
       await _ensureInitialized();
+      final loginHint = options.trimmedLoginHint;
+      if (loginHint != null) {
+        final silent = await GoogleSignIn.instance
+            .attemptLightweightAuthentication();
+        if (silent != null &&
+            silent.email.trim().toLowerCase() == loginHint.toLowerCase()) {
+          return _toResult(silent, scopes, context: 'sign-in');
+        }
+      }
       final account = await GoogleSignIn.instance.authenticate();
       return _toResult(account, scopes, context: 'sign-in');
     } on GoogleSignInException catch (e) {

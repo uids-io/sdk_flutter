@@ -3,6 +3,7 @@ import '../models/auth_provider.dart';
 import '../models/auth_session.dart';
 import '../models/device_models.dart';
 import '../models/email_auth_models.dart';
+import '../models/provider_sign_in_options.dart';
 import '../storage/sdk_storage.dart';
 import 'uids_auth_sdk_impl.dart';
 
@@ -40,6 +41,7 @@ abstract interface class UidsAuthSdk {
   Future<AuthSession> signInWithProvider({
     required AuthProvider provider,
     List<String> scopes = const ['openid', 'email', 'profile'],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
   });
 
   /// Silently re-acquires a provider credential and exchanges it for a fresh
@@ -62,7 +64,10 @@ abstract interface class UidsAuthSdk {
   /// Checks whether [username] is available for email registration.
   Future<UsernameAvailabilityResult> checkUsernameAvailable(String username);
 
-  /// Register a new account with username, email, and password.
+  /// Sends a one-time verification code to [email] before registration.
+  Future<void> sendRegisterEmailOtp({required String email});
+
+  /// Register a new account with username, email, password, and email OTP.
   ///
   /// Returns a [EmailRegistrationResult] with a QR code for authenticator
   /// setup. Call [completeEmailSignIn] with the pending token and a TOTP
@@ -71,6 +76,7 @@ abstract interface class UidsAuthSdk {
     required String username,
     required String email,
     required String password,
+    required String emailOtp,
   });
 
   /// Sign in with email, password, and authenticator code in one step.
@@ -108,6 +114,12 @@ abstract interface class UidsAuthSdk {
   Future<Map<String, String>> authHeaders();
 
   Future<AuthSession> refreshSession({bool force = false});
+
+  /// Loads [session] as the active local session (profile switching).
+  Future<void> restoreLocalSession(AuthSession session);
+
+  /// Clears the active local session without provider sign-out.
+  Future<void> clearLocalSession();
 
   Future<bool> isSignedIn();
 

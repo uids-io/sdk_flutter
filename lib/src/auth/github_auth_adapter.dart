@@ -12,6 +12,7 @@ import '../config/github_auth_config.dart';
 import '../errors/uids_auth_exception.dart';
 import '../models/auth_provider.dart';
 import '../models/provider_auth_result.dart';
+import '../models/provider_sign_in_options.dart';
 import 'provider_auth_adapter.dart';
 
 /// GitHub OAuth 2.0 authentication adapter.
@@ -84,7 +85,10 @@ final class GitHubAuthAdapter implements ProviderAuthAdapter {
   AuthProvider get provider => AuthProvider.github;
 
   @override
-  Future<ProviderAuthResult> signIn({List<String> scopes = const []}) async {
+  Future<ProviderAuthResult> signIn({
+    List<String> scopes = const [],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
+  }) async {
     final state = _randomUrlSafe(32);
     final effectiveScopes = _withDefaultScopes(scopes);
     final redirectUri = _resolveRedirectUri();

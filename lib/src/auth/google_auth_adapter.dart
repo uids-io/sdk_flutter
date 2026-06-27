@@ -8,6 +8,7 @@ import '../config/google_auth_config.dart';
 import '../errors/uids_auth_exception.dart';
 import '../models/auth_provider.dart';
 import '../models/provider_auth_result.dart';
+import '../models/provider_sign_in_options.dart';
 import 'google/google_auth_platform_adapter.dart';
 import 'google/google_desktop_auth_adapter.dart';
 import 'google/google_mobile_auth_adapter.dart';
@@ -71,8 +72,11 @@ final class GoogleAuthAdapter implements ProviderAuthAdapter {
   AuthProvider get provider => AuthProvider.google;
 
   @override
-  Future<ProviderAuthResult> signIn({List<String> scopes = const []}) =>
-      _platform.signIn(scopes: scopes);
+  Future<ProviderAuthResult> signIn({
+    List<String> scopes = const [],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
+  }) =>
+      _platform.signIn(scopes: scopes, options: options);
 
   @override
   Future<ProviderAuthResult> refresh({List<String> scopes = const []}) =>

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../errors/uids_auth_exception.dart';
+import '../logging/sdk_logger.dart';
 import '../models/device_models.dart';
 import '../network/auth_api_client.dart';
 import '../storage/sdk_storage.dart';
@@ -30,13 +31,16 @@ final class DeviceManager {
     required AuthApiClient apiClient,
     required AccessTokenProvider tokenProvider,
     required SdkStorage storage,
+    SdkLogger? logger,
   })  : _api = apiClient,
         _tokenProvider = tokenProvider,
-        _storage = storage;
+        _storage = storage,
+        _log = logger ?? SdkLogger(onLog: null);
 
   final AuthApiClient _api;
   final AccessTokenProvider _tokenProvider;
   final SdkStorage _storage;
+  final SdkLogger _log;
 
   RegisteredDevice? _memoryCache;
 
@@ -57,12 +61,22 @@ final class DeviceManager {
   Future<RegisteredDevice> registerDevice(
     DeviceRegisterRequest request,
   ) async {
+    _log.info('Device registration started', {
+      'stableDeviceKey': request.stableDeviceKey,
+    });
     final token = await _accessToken();
     try {
       final device = await _api.registerDevice(request, token);
       await _saveDevice(device);
+      _log.info('Device registration succeeded', {'deviceId': device.id});
       return device;
-    } catch (e) {
+    } catch (e, st) {
+      _log.warn(
+        'Device registration failed',
+        error: e,
+        stackTrace: st,
+        data: {'stableDeviceKey': request.stableDeviceKey},
+      );
       throw UidsDeviceRegistrationException(
         'Failed to register device.',
         cause: e,
@@ -78,7 +92,12 @@ final class DeviceManager {
     DeviceRegisterRequest request,
   ) async {
     final cached = await currentDevice();
-    if (cached != null) return cached;
+    if (cached != null) {
+      _log.trace('ensureDeviceRegistered: using cached device', {
+        'deviceId': cached.id,
+      });
+      return cached;
+    }
     return registerDevice(request);
   }
 
@@ -99,10 +118,15 @@ final class DeviceManager {
   /// Unregisters the current device from the backend and clears the cache.
   Future<void> unregisterDevice() async {
     final device = await currentDevice();
-    if (device == null) return;
+    if (device == null) {
+      _log.trace('unregisterDevice: no cached device');
+      return;
+    }
+    _log.info('Device unregister started', {'deviceId': device.id});
     final token = await _accessToken();
     await _api.unregisterDevice(device.id, token);
     await _clearDevice();
+    _log.info('Device unregister completed', {'deviceId': device.id});
   }
 
   /// Returns the cached device, throwing if none is registered.

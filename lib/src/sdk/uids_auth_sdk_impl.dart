@@ -5,10 +5,12 @@ import '../auth/provider_auth_adapter.dart';
 import '../config/uids_sdk_config.dart';
 import '../device/device_manager.dart';
 import '../errors/uids_auth_exception.dart';
+import '../logging/sdk_logger.dart';
 import '../models/auth_provider.dart';
 import '../models/auth_session.dart';
 import '../models/device_models.dart';
 import '../models/email_auth_models.dart';
+import '../models/provider_sign_in_options.dart';
 import '../network/auth_api_client.dart';
 import '../session/session_manager.dart';
 import '../storage/secure_sdk_storage.dart';
@@ -38,14 +40,27 @@ final class UidsAuthSdkImpl implements UidsAuthSdk {
     if (_initialized) return;
 
     final storage = _storageOverride ?? SecureSdkStorage();
+    final log = SdkLogger.fromConfig(config, namespace: 'sdk');
 
-    _api = AuthApiClient(config: config);
+    log.info('Initializing UidsAuthSdk', {
+      'authBaseUrl': config.authBaseUrl.toString(),
+      'apiBaseUrl': config.apiBaseUrl.toString(),
+      'autoRefresh': config.autoRefresh,
+      'refreshBeforeExpiryMinutes': config.refreshBeforeExpiry.inMinutes,
+      'providersConfigured': _configuredProviders(config),
+    });
+
+    _api = AuthApiClient(
+      config: config,
+      logger: log.scoped('network'),
+    );
 
     _session = SessionManager(
       apiClient: _api,
       storage: storage,
       refreshBeforeExpiry: config.refreshBeforeExpiry,
       autoRefresh: config.autoRefresh,
+      logger: log.scoped('session'),
     );
 
     // DeviceManager depends only on a token provider — not on SessionManager —
@@ -54,15 +69,18 @@ final class UidsAuthSdkImpl implements UidsAuthSdk {
       apiClient: _api,
       tokenProvider: () async => (await _session.getValidSession()).accessToken,
       storage: storage,
+      logger: log.scoped('device'),
     );
 
     _auth = AuthManager(
       apiClient: _api,
       sessionManager: _session,
       adapters: _buildAdapters(config),
+      logger: log.scoped('auth'),
     );
 
     _initialized = true;
+    log.info('UidsAuthSdk initialized');
   }
 
   // ── Authentication ────────────────────────────────────────────────────────
@@ -71,9 +89,10 @@ final class UidsAuthSdkImpl implements UidsAuthSdk {
   Future<AuthSession> signInWithProvider({
     required AuthProvider provider,
     List<String> scopes = const ['openid', 'email', 'profile'],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
   }) async {
     _assertInitialized();
-    return _auth.signIn(provider: provider, scopes: scopes);
+    return _auth.signIn(provider: provider, scopes: scopes, options: options);
   }
 
   @override
@@ -94,16 +113,24 @@ final class UidsAuthSdkImpl implements UidsAuthSdk {
   }
 
   @override
+  Future<void> sendRegisterEmailOtp({required String email}) async {
+    _assertInitialized();
+    return _auth.sendRegisterEmailOtp(email: email);
+  }
+
+  @override
   Future<EmailRegistrationResult> registerWithEmail({
     required String username,
     required String email,
     required String password,
+    required String emailOtp,
   }) async {
     _assertInitialized();
     return _auth.registerWithEmail(
       username: username,
       email: email,
       password: password,
+      emailOtp: emailOtp,
     );
   }
 
@@ -181,6 +208,18 @@ final class UidsAuthSdkImpl implements UidsAuthSdk {
       return _session.refreshSession();
     }
     return _session.getValidSession();
+  }
+
+  @override
+  Future<void> restoreLocalSession(AuthSession session) async {
+    _assertInitialized();
+    await _session.saveSession(session);
+  }
+
+  @override
+  Future<void> clearLocalSession() async {
+    _assertInitialized();
+    await _session.clearSession();
   }
 
   @override
@@ -275,15 +314,25 @@ final class UidsAuthSdkImpl implements UidsAuthSdk {
     if (config.google != null) {
       adapters[AuthProvider.google] = GoogleAuthAdapter.fromPlatform(
         config: config.google!,
+        browserLauncher: config.browserLauncher,
       );
     }
 
     if (config.microsoft != null) {
       adapters[AuthProvider.microsoft] = MicrosoftAuthAdapter(
         config: config.microsoft!,
+        browserLauncher: config.browserLauncher,
       );
     }
 
     return adapters;
+  }
+
+  List<String> _configuredProviders(UidsSdkConfig config) {
+    final providers = <String>[];
+    if (config.google != null) providers.add('google');
+    if (config.microsoft != null) providers.add('microsoft');
+    if (config.github != null) providers.add('github');
+    return providers;
   }
 }

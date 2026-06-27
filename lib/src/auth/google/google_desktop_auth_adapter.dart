@@ -11,6 +11,7 @@ import '../../config/google_auth_config.dart';
 import '../../errors/uids_auth_exception.dart';
 import '../../models/auth_provider.dart';
 import '../../models/provider_auth_result.dart';
+import '../../models/provider_sign_in_options.dart';
 import 'google_auth_platform_adapter.dart';
 
 /// Google sign-in via the OAuth 2.0 Authorization Code flow with PKCE.
@@ -66,28 +67,40 @@ final class GoogleDesktopAuthAdapter implements GoogleAuthPlatformAdapter {
   // ── GoogleAuthPlatformAdapter ────────────────────────────────────────────
 
   @override
-  Future<ProviderAuthResult> signIn({List<String> scopes = const []}) async {
+  Future<ProviderAuthResult> signIn({
+    List<String> scopes = const [],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
+  }) async {
     final clientId = _requireClientId();
     final redirectUri = _resolveRedirectUri();
     final effectiveScopes = _withOpenIdScopes(scopes);
+    final loginHint = options.trimmedLoginHint;
 
     final verifier = _randomUrlSafe(64);
     final challenge = _s256Challenge(verifier);
     final state = _randomUrlSafe(32);
 
+    final queryParameters = <String, String>{
+      'response_type': 'code',
+      'client_id': clientId,
+      'redirect_uri': redirectUri.toString(),
+      'scope': effectiveScopes.join(' '),
+      'code_challenge': challenge,
+      'code_challenge_method': 'S256',
+      'state': state,
+      'access_type': 'offline',
+      'include_granted_scopes': 'true',
+    };
+
+    if (loginHint != null) {
+      queryParameters['login_hint'] = loginHint;
+      queryParameters['prompt'] = 'login';
+    } else {
+      queryParameters['prompt'] = 'consent';
+    }
+
     final authorizeUrl = Uri.parse(_authorizeEndpoint).replace(
-      queryParameters: <String, String>{
-        'response_type': 'code',
-        'client_id': clientId,
-        'redirect_uri': redirectUri.toString(),
-        'scope': effectiveScopes.join(' '),
-        'code_challenge': challenge,
-        'code_challenge_method': 'S256',
-        'state': state,
-        'access_type': 'offline',
-        'prompt': 'consent',
-        'include_granted_scopes': 'true',
-      },
+      queryParameters: queryParameters,
     );
 
     try {

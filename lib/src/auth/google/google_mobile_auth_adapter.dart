@@ -6,6 +6,7 @@ import '../../config/google_auth_config.dart';
 import '../../errors/uids_auth_exception.dart';
 import '../../models/auth_provider.dart';
 import '../../models/provider_auth_result.dart';
+import '../../models/provider_sign_in_options.dart';
 import 'google_auth_platform_adapter.dart';
 
 /// Google sign-in for Android and iOS using `google_sign_in: ^7.2.0`.
@@ -23,9 +24,22 @@ final class GoogleMobileAuthAdapter implements GoogleAuthPlatformAdapter {
   bool _initialized = false;
 
   @override
-  Future<ProviderAuthResult> signIn({List<String> scopes = const []}) async {
+  Future<ProviderAuthResult> signIn({
+    List<String> scopes = const [],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
+  }) async {
     try {
       await _ensureInitialized();
+
+      final loginHint = options.trimmedLoginHint;
+      if (loginHint != null) {
+        final silent = await GoogleSignIn.instance
+            .attemptLightweightAuthentication();
+        if (silent != null &&
+            silent.email.trim().toLowerCase() == loginHint.toLowerCase()) {
+          return _toResult(silent, scopes, failureMessage: 'Google sign-in');
+        }
+      }
 
       final account = await GoogleSignIn.instance.authenticate();
 

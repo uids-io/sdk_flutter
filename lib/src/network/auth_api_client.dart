@@ -4,11 +4,14 @@ import 'package:http/http.dart' as http;
 
 import '../config/uids_sdk_config.dart';
 import '../errors/uids_auth_exception.dart';
+import '../logging/sdk_logger.dart';
 import '../models/auth_session.dart';
 import '../models/device_models.dart';
 import '../models/email_auth_models.dart';
 import '../models/provider_auth_result.dart';
 import 'auth_endpoints.dart';
+import 'client_error_mapper.dart';
+import 'network_failure_message.dart';
 
 /// HTTP client that communicates with the UIDS authentication backend.
 ///
@@ -16,16 +19,19 @@ import 'auth_endpoints.dart';
 /// [UidsAuthException] subclasses so callers never deal with raw Dio/http
 /// exceptions.
 final class AuthApiClient {
-  AuthApiClient({required UidsSdkConfig config, http.Client? httpClient})
-    : _config = config,
-      _http = httpClient ?? http.Client(),
-      _endpoints = AuthEndpoints(
-        authBaseUrl: config.authBaseUrl,
-        apiBaseUrl: config.apiBaseUrl,
-      );
+  AuthApiClient({
+    required UidsSdkConfig config,
+    http.Client? httpClient,
+    SdkLogger? logger,
+  }) : _http = httpClient ?? http.Client(),
+       _log = logger ?? SdkLogger.fromConfig(config, namespace: 'network'),
+       _endpoints = AuthEndpoints(
+         authBaseUrl: config.authBaseUrl,
+         apiBaseUrl: config.apiBaseUrl,
+       );
 
-  final UidsSdkConfig _config;
   final http.Client _http;
+  final SdkLogger _log;
   final AuthEndpoints _endpoints;
 
   // ── Auth ──────────────────────────────────────────────────────────────────
@@ -47,6 +53,7 @@ final class AuthApiClient {
       'accessToken': result.accessToken,
       'idpName': result.provider.label,
       'tokenType': 'Bearer',
+      'idToken': result.idToken,
     };
 
     final json = await _post(_endpoints.exchangeToken, body, authToken: null);
@@ -73,8 +80,35 @@ final class AuthApiClient {
     try {
       final json = await _post(_endpoints.refreshToken, body, authToken: null);
       _normalizeSessionJson(json, username: username, provider: provider);
+      _log.info('Refresh token exchange succeeded', {
+        'user': username,
+        'provider': provider,
+      });
       return AuthSession.fromJson(json);
+    } on UidsClientException catch (e) {
+      _log.warn(
+        'Refresh token exchange rejected',
+        error: e,
+        data: {
+          'user': username,
+          'provider': provider,
+          'statusCode': e.statusCode,
+        },
+      );
+      if (e.statusCode == 401 || e.statusCode == 400) {
+        throw const UidsRefreshTokenExpiredException();
+      }
+      rethrow;
     } on UidsNetworkException catch (e) {
+      _log.warn(
+        'Refresh token network failure',
+        error: e,
+        data: {
+          'user': username,
+          'provider': provider,
+          'statusCode': e.statusCode,
+        },
+      );
       if (e.statusCode == 401 || e.statusCode == 400) {
         throw const UidsRefreshTokenExpiredException();
       }
@@ -100,32 +134,35 @@ final class AuthApiClient {
     return UsernameAvailabilityResult.fromJson(json);
   }
 
-  /// Register a new account with username, email, and password.
+  /// Sends a one-time verification code to [email] before registration.
+  Future<void> sendRegisterEmailOtp({required String email}) async {
+    await _post(
+      _endpoints.registerSendEmailOtp,
+      <String, dynamic>{'email': email.trim()},
+      authToken: null,
+    );
+  }
+
+  /// Register a new account with username, email, password, and email OTP.
   Future<EmailRegistrationResult> registerWithEmail({
     required String username,
     required String email,
     required String password,
+    required String emailOtp,
   }) async {
     final body = <String, dynamic>{
       'username': username.trim(),
       'email': email.trim(),
       'password': password,
+      'emailOtp': emailOtp.trim(),
     };
 
-    try {
-      final json = await _post(_endpoints.register, body, authToken: null);
-      return EmailRegistrationResult.fromJson(
-        json,
-        email: email.trim(),
-        username: username.trim(),
-      );
-    } on UidsNetworkException catch (e) {
-      if (e.statusCode == 400 &&
-          e.message.toLowerCase().contains('username')) {
-        throw UidsUsernameUnavailableException(e.message);
-      }
-      rethrow;
-    }
+    final json = await _post(_endpoints.register, body, authToken: null);
+    return EmailRegistrationResult.fromJson(
+      json,
+      email: email.trim(),
+      username: username.trim(),
+    );
   }
 
   /// Step 1 of email sign-in — validates credentials and returns a pending token.
@@ -141,10 +178,7 @@ final class AuthApiClient {
     try {
       final json = await _post(_endpoints.login, body, authToken: null);
       return EmailLoginResult.fromJson(json, email: email);
-    } on UidsNetworkException catch (e) {
-      if (e.statusCode == 400) {
-        throw UidsInvalidCredentialsException(e.message);
-      }
+    } on UidsAuthException {
       rethrow;
     }
   }
@@ -256,18 +290,15 @@ final class AuthApiClient {
     Map<String, dynamic> body, {
     required String? authToken,
   }) async {
-    try {
-      final response = await _http.post(
+    return _send(
+      method: 'POST',
+      uri: uri,
+      send: () => _http.post(
         uri,
         headers: _headers(authToken: authToken),
         body: jsonEncode(body),
-      );
-      return _handleResponse(response);
-    } on UidsAuthException {
-      rethrow;
-    } catch (e) {
-      throw UidsNetworkException('POST $uri failed', cause: e);
-    }
+      ),
+    );
   }
 
   Future<Map<String, dynamic>> _patch(
@@ -275,69 +306,166 @@ final class AuthApiClient {
     Map<String, dynamic> body, {
     required String? authToken,
   }) async {
-    try {
-      final response = await _http.patch(
+    return _send(
+      method: 'PATCH',
+      uri: uri,
+      send: () => _http.patch(
         uri,
         headers: _headers(authToken: authToken),
         body: jsonEncode(body),
-      );
-      return _handleResponse(response);
-    } on UidsAuthException {
-      rethrow;
-    } catch (e) {
-      throw UidsNetworkException('PATCH $uri failed', cause: e);
-    }
+      ),
+    );
   }
 
   Future<Map<String, dynamic>> _get(
     Uri uri, {
     required String? authToken,
   }) async {
-    try {
-      final response = await _http.get(
+    return _send(
+      method: 'GET',
+      uri: uri,
+      send: () => _http.get(
         uri,
         headers: _headers(authToken: authToken),
-      );
-      return _handleResponse(response);
-    } on UidsAuthException {
-      rethrow;
-    } catch (e) {
-      throw UidsNetworkException('GET $uri failed', cause: e);
-    }
+      ),
+    );
   }
 
   Future<void> _delete(Uri uri, {required String? authToken}) async {
-    try {
-      final response = await _http.delete(
+    await _sendVoid(
+      method: 'DELETE',
+      uri: uri,
+      send: () => _http.delete(
         uri,
         headers: _headers(authToken: authToken),
+      ),
+    );
+  }
+
+  Future<Map<String, dynamic>> _send({
+    required String method,
+    required Uri uri,
+    required Future<http.Response> Function() send,
+  }) async {
+    final started = DateTime.now();
+    _log.debug(
+      'HTTP request started',
+      httpRequestContext(method: method, uri: uri),
+    );
+
+    try {
+      final response = await send();
+      final durationMs = DateTime.now().difference(started).inMilliseconds;
+      final context = httpRequestContext(
+        method: method,
+        uri: uri,
+        statusCode: response.statusCode,
+        durationMs: durationMs,
       );
-      if (response.statusCode >= 400) {
-        throw UidsNetworkException(
-          'DELETE $uri failed with status ${response.statusCode}',
-          statusCode: response.statusCode,
-        );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        _log.debug('HTTP request completed', context);
+        if (response.body.isEmpty) return {};
+        return jsonDecode(response.body) as Map<String, dynamic>;
       }
+
+      final message = _readErrorMessage(response);
+      _log.warn('HTTP request failed', data: {...context, 'message': message});
+      throwUidsHttpError(response.statusCode, message);
     } on UidsAuthException {
       rethrow;
-    } catch (e) {
-      throw UidsNetworkException('DELETE $uri failed', cause: e);
+    } catch (e, st) {
+      final durationMs = DateTime.now().difference(started).inMilliseconds;
+      throw _failTransport(
+        method: method,
+        uri: uri,
+        durationMs: durationMs,
+        error: e,
+        stackTrace: st,
+      );
     }
   }
 
-  Map<String, dynamic> _handleResponse(http.Response response) {
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      if (response.body.isEmpty) return {};
-      return jsonDecode(response.body) as Map<String, dynamic>;
+  Future<void> _sendVoid({
+    required String method,
+    required Uri uri,
+    required Future<http.Response> Function() send,
+  }) async {
+    final started = DateTime.now();
+    _log.debug(
+      'HTTP request started',
+      httpRequestContext(method: method, uri: uri),
+    );
+
+    try {
+      final response = await send();
+      final durationMs = DateTime.now().difference(started).inMilliseconds;
+      final context = httpRequestContext(
+        method: method,
+        uri: uri,
+        statusCode: response.statusCode,
+        durationMs: durationMs,
+      );
+
+      if (response.statusCode >= 400) {
+        _log.warn(
+          'HTTP request failed',
+          data: {
+            ...context,
+            'message':
+                'DELETE failed with status ${response.statusCode}',
+          },
+        );
+        throw UidsNetworkException(
+          '$method $uri failed with status ${response.statusCode}',
+          statusCode: response.statusCode,
+        );
+      }
+
+      _log.debug('HTTP request completed', context);
+    } on UidsAuthException {
+      rethrow;
+    } catch (e, st) {
+      final durationMs = DateTime.now().difference(started).inMilliseconds;
+      throw _failTransport(
+        method: method,
+        uri: uri,
+        durationMs: durationMs,
+        error: e,
+        stackTrace: st,
+      );
+    }
+  }
+
+  Never _failTransport({
+    required String method,
+    required Uri uri,
+    required int durationMs,
+    required Object error,
+    StackTrace? stackTrace,
+  }) {
+    final userMessage = networkFailureUserMessage(error, uri: uri);
+    final context = {
+      ...httpRequestContext(
+        method: method,
+        uri: uri,
+        durationMs: durationMs,
+      ),
+      'userMessage': userMessage,
+    };
+
+    if (isExpectedTransportFailure(error)) {
+      _log.warn('HTTP request could not reach server', data: context);
+    } else {
+      _log.warn(
+        'HTTP transport error',
+        data: context,
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
 
-    final message = _readErrorMessage(response);
-
-    if (response.statusCode == 401) {
-      throw UidsNetworkException(message, statusCode: response.statusCode);
-    }
-
-    throw UidsNetworkException(message, statusCode: response.statusCode);
+    throw UidsNetworkException(userMessage, cause: error);
   }
 
   String _readErrorMessage(http.Response response) {

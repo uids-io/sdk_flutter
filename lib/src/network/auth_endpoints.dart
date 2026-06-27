@@ -30,6 +30,9 @@ final class AuthEndpoints {
 
   Uri get register => authBaseUrl.replace(path: '${authBaseUrl.path}/register');
 
+  Uri get registerSendEmailOtp =>
+      authBaseUrl.replace(path: '${authBaseUrl.path}/register/sendEmailOtp');
+
   Uri get login => authBaseUrl.replace(path: '${authBaseUrl.path}/login');
 
   Uri get otpVerify =>

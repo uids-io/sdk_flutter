@@ -1,4 +1,6 @@
 import '../browser/auth_browser_launcher.dart';
+import '../logging/uids_log_callback.dart';
+import '../logging/uids_log_level.dart';
 import 'github_auth_config.dart';
 import 'google_auth_config.dart';
 import 'microsoft_auth_config.dart';
@@ -20,6 +22,8 @@ final class UidsSdkConfig {
     this.microsoft,
     this.github,
     this.browserLauncher,
+    this.onLog,
+    this.minLogLevel = UidsLogLevel.debug,
   });
 
   /// Base URL for the consumer's main API (used for device endpoints, etc.).
@@ -67,4 +71,17 @@ final class UidsSdkConfig {
   ///
   /// - Any custom [AuthBrowserLauncher] implementation for advanced use cases.
   final AuthBrowserLauncher? browserLauncher;
+
+  /// Optional consumer log sink. The SDK never prints on its own — wire
+  /// `debugPrint`, your app logger, or analytics here.
+  ///
+  /// ```dart
+  /// onLog: (level, message, [data]) {
+  ///   debugPrint('[uids][${level.name}] $message ${data ?? ''}');
+  /// },
+  /// ```
+  final UidsLogCallback? onLog;
+
+  /// Minimum severity forwarded to [onLog]. Defaults to [UidsLogLevel.debug].
+  final UidsLogLevel minLogLevel;
 }

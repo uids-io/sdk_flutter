@@ -1,5 +1,6 @@
 import '../models/auth_provider.dart';
 import '../models/provider_auth_result.dart';
+import '../models/provider_sign_in_options.dart';
 
 /// Contract that every provider adapter must implement.
 ///
@@ -16,7 +17,10 @@ abstract interface class ProviderAuthAdapter {
   ///
   /// Throws [UidsProviderCancelledException] if the user dismisses the UI.
   /// Throws [UidsAuthException] for any other failure.
-  Future<ProviderAuthResult> signIn({List<String> scopes = const []});
+  Future<ProviderAuthResult> signIn({
+    List<String> scopes = const [],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
+  });
 
   /// Silently re-acquires a fresh provider credential without showing UI.
   ///

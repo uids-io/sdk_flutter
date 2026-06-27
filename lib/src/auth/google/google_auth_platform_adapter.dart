@@ -1,4 +1,5 @@
 import '../../models/provider_auth_result.dart';
+import '../../models/provider_sign_in_options.dart';
 
 /// Platform-level Google sign-in port.
 ///
@@ -15,7 +16,10 @@ abstract interface class GoogleAuthPlatformAdapter {
   /// Interactive sign-in.  Throws `UidsProviderCancelledException` when the
   /// user dismisses the flow, `UidsProviderSignInException` for any other
   /// failure.
-  Future<ProviderAuthResult> signIn({List<String> scopes = const []});
+  Future<ProviderAuthResult> signIn({
+    List<String> scopes = const [],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
+  });
 
   /// Silent re-acquisition of a fresh credential without showing UI.
   ///

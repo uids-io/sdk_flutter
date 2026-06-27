@@ -63,6 +63,11 @@ final class UidsInvalidCredentialsException extends UidsAuthException {
   const UidsInvalidCredentialsException(super.message);
 }
 
+/// Thrown when a registration password does not meet the strength policy.
+final class UidsWeakPasswordException extends UidsAuthException {
+  const UidsWeakPasswordException(super.message);
+}
+
 /// Thrown when a username is already taken during registration.
 final class UidsUsernameUnavailableException extends UidsAuthException {
   const UidsUsernameUnavailableException(super.message);
@@ -78,6 +83,26 @@ final class UidsNoTenantsAvailableException extends UidsAuthException {
   const UidsNoTenantsAvailableException([
     super.message = 'No tenants available for this account.',
   ]);
+}
+
+/// Thrown for API client errors (4xx) with a server-provided message.
+final class UidsClientException extends UidsAuthException {
+  const UidsClientException(
+    super.message, {
+    this.statusCode,
+  });
+
+  final int? statusCode;
+}
+
+/// Thrown when registration is attempted with an email that already exists.
+final class UidsEmailAlreadyRegisteredException extends UidsAuthException {
+  const UidsEmailAlreadyRegisteredException(super.message);
+}
+
+/// Thrown when the email verification code is invalid or expired.
+final class UidsInvalidEmailVerificationException extends UidsAuthException {
+  const UidsInvalidEmailVerificationException(super.message);
 }
 
 /// Thrown when the requested tenant is not in the user's entity list.

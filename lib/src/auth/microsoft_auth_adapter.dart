@@ -10,6 +10,7 @@ import '../config/microsoft_auth_config.dart';
 import '../errors/uids_auth_exception.dart';
 import '../models/auth_provider.dart';
 import '../models/provider_auth_result.dart';
+import '../models/provider_sign_in_options.dart';
 import 'provider_auth_adapter.dart';
 
 /// Microsoft (Entra ID / Azure AD) authentication adapter.
@@ -79,23 +80,35 @@ final class MicrosoftAuthAdapter implements ProviderAuthAdapter {
   AuthProvider get provider => AuthProvider.microsoft;
 
   @override
-  Future<ProviderAuthResult> signIn({List<String> scopes = const []}) async {
+  Future<ProviderAuthResult> signIn({
+    List<String> scopes = const [],
+    ProviderSignInOptions options = ProviderSignInOptions.none,
+  }) async {
     final state = DateTime.now().millisecondsSinceEpoch.toString();
     final effectiveScopes = _withRequiredScopes(scopes);
     final redirectUri = _resolveRedirectUri();
     final tenant = _config.tenantId;
+    final loginHint = options.trimmedLoginHint;
+
+    final queryParameters = <String, String>{
+      'client_id': _config.clientId,
+      'response_type': 'code',
+      'redirect_uri': redirectUri,
+      'response_mode': 'query',
+      'scope': effectiveScopes.join(' '),
+      'state': state,
+    };
+
+    if (loginHint != null) {
+      queryParameters['login_hint'] = loginHint;
+      queryParameters['prompt'] = 'login';
+    } else {
+      queryParameters['prompt'] = 'select_account';
+    }
 
     final authUrl = Uri.parse(_authorizeBase.replaceFirst('{tenant}', tenant))
         .replace(
-          queryParameters: <String, String>{
-            'client_id': _config.clientId,
-            'response_type': 'code',
-            'redirect_uri': redirectUri,
-            'response_mode': 'query',
-            'scope': effectiveScopes.join(' '),
-            'state': state,
-            'prompt': 'select_account',
-          },
+          queryParameters: queryParameters,
         );
 
     try {
